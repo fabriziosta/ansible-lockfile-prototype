@@ -462,11 +462,14 @@ def resolve_collections(
     server: GalaxyServer | None = None,
     base_url: str | None = None,
     session: requests.Session | None = None,
+    prefer_remote: bool = False,
 ) -> tuple[list[CollectionItem], list[GalaxyServer]]:
     """Resolve collections trying servers in priority order (ansible server_list).
 
-    Local tarball requirements (``local_path``) are resolved from MANIFEST.json
-    and never hit Galaxy/AH.
+    Local tarball requirements (``local_path``) are resolved from MANIFEST.json.
+    By default they never hit Galaxy/AH (``file://`` + ``server: local``). With
+    ``prefer_remote=True``, the tarball still supplies FQCN/version (and a local
+    checksum for comparison), but URL/checksum/size come from ``server_list``.
 
     Returns ``(items, servers_used)`` where ``servers_used`` are unique servers
     that supplied at least one collection (for lockfile auth metadata).
@@ -481,7 +484,7 @@ def resolve_collections(
 
     has_remote = any(req.get("local_path") is None for req in requirements)
     clients: list[GalaxyClient] = []
-    if has_remote:
+    if has_remote or prefer_remote:
         usable = _usable_servers(servers)
         if session is not None and len(usable) == 1:
             clients = [GalaxyClient(server=usable[0], session=session)]
@@ -559,6 +562,37 @@ def resolve_collections(
                 raise GalaxyError(
                     f"Local {fqcn}=={meta.version} does not satisfy {constraints.get(fqcn)}"
                 )
+            if prefer_remote:
+                if not clients:
+                    raise GalaxyError(
+                        f"Cannot resolve local collection {fqcn} via remote "
+                        f"(--prefer-remote): no usable galaxy servers configured"
+                    )
+                item, client, payload = _resolve_on_servers(
+                    fqcn, f"=={meta.version}", clients
+                )
+                if item.checksum != meta.checksum:
+                    logger.warning(
+                        "Local tarball checksum for %s==%s does not match remote "
+                        "(%s): local %s vs remote %s; using remote values",
+                        fqcn,
+                        meta.version,
+                        meta.path,
+                        meta.checksum,
+                        item.checksum,
+                    )
+                resolved[fqcn] = item
+                used_servers[client.server.name] = client.server
+                logger.info(
+                    "Resolved %s==%s from server %r (version from local tarball %s)",
+                    fqcn,
+                    item.version,
+                    client.server.name,
+                    meta.path,
+                )
+                _add_deps(_dependencies_from_payload(payload), fqcn)
+                continue
+
             item = CollectionItem(
                 name=meta.fqcn,
                 version=meta.version,

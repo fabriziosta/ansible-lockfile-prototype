@@ -7,6 +7,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+import responses
 import yaml
 
 from ansible_lockfile.export_generic import collections_to_generic
@@ -173,3 +174,173 @@ def test_git_lfs_pointer_gives_actionable_error(tmp_path: Path):
         read_collection_tarball(pointer)
     with pytest.raises(GalaxyError, match="git lfs pull"):
         read_collection_tarball(pointer)
+
+
+@responses.activate
+def test_prefer_remote_uses_galaxy_url(tmp_path: Path, caplog):
+    import logging
+
+    from ansible_lockfile.galaxy import GalaxyServer
+
+    repo = tmp_path / "vendor"
+    tar = _make_collection_tarball(
+        repo / "collections" / "amazon-aws-10.3.0.tar.gz",
+        namespace="amazon",
+        name="aws",
+        version="10.3.0",
+    )
+    local_digest = hashlib.sha256(tar.read_bytes()).hexdigest()
+    req = repo / "ee-supported" / "requirements.yml"
+    req.parent.mkdir(parents=True)
+    req.write_text(
+        yaml.safe_dump(
+            {"collections": [{"name": "collections/amazon-aws-10.3.0.tar.gz"}]}
+        ),
+        encoding="utf-8",
+    )
+    requirements = load_requirements_file(req, project_dir=repo)
+
+    base = "https://galaxy.ansible.com"
+    responses.add(
+        responses.GET,
+        f"{base}/api/v3/plugin/ansible/content/published/collections/"
+        "index/amazon/aws/versions/10.3.0/",
+        json={
+            "version": "10.3.0",
+            "download_url": "https://galaxy.ansible.com/download/amazon-aws-10.3.0.tar.gz",
+            "artifact": {
+                "filename": "amazon-aws-10.3.0.tar.gz",
+                "sha256": local_digest,
+                "size": tar.stat().st_size,
+            },
+            "metadata": {"dependencies": {}},
+            "namespace": {"name": "amazon"},
+            "name": "aws",
+        },
+    )
+
+    with caplog.at_level(logging.WARNING):
+        items, used = resolve_collections(
+            requirements,
+            servers=[GalaxyServer(name="galaxy", url=base)],
+            prefer_remote=True,
+        )
+
+    assert len(items) == 1
+    assert items[0].name == "amazon.aws"
+    assert items[0].version == "10.3.0"
+    assert items[0].server == "galaxy"
+    assert items[0].url == (
+        "https://galaxy.ansible.com/download/amazon-aws-10.3.0.tar.gz"
+    )
+    assert items[0].checksum == f"sha256:{local_digest}"
+    assert used[0].name == "galaxy"
+    assert "does not match remote" not in caplog.text
+
+    generic = collections_to_generic(items, servers=used)
+    assert len(generic["artifacts"]) == 1
+
+
+@responses.activate
+def test_prefer_remote_warns_on_checksum_mismatch(tmp_path: Path, caplog):
+    import logging
+
+    from ansible_lockfile.galaxy import GalaxyServer
+
+    repo = tmp_path
+    _make_collection_tarball(
+        repo / "collections" / "amazon-aws-10.3.0.tar.gz",
+        version="10.3.0",
+    )
+    req = repo / "requirements.yml"
+    req.write_text(
+        yaml.safe_dump(
+            {"collections": [{"name": "collections/amazon-aws-10.3.0.tar.gz"}]}
+        ),
+        encoding="utf-8",
+    )
+    requirements = load_requirements_file(req, project_dir=repo)
+
+    remote_sha = "ab" * 32
+    base = "https://galaxy.ansible.com"
+    responses.add(
+        responses.GET,
+        f"{base}/api/v3/plugin/ansible/content/published/collections/"
+        "index/amazon/aws/versions/10.3.0/",
+        json={
+            "version": "10.3.0",
+            "download_url": "https://example.com/amazon-aws-10.3.0.tar.gz",
+            "artifact": {
+                "filename": "amazon-aws-10.3.0.tar.gz",
+                "sha256": remote_sha,
+                "size": 99,
+            },
+            "metadata": {"dependencies": {}},
+            "namespace": {"name": "amazon"},
+            "name": "aws",
+        },
+    )
+
+    with caplog.at_level(logging.WARNING):
+        items, _used = resolve_collections(
+            requirements,
+            servers=[GalaxyServer(url=base)],
+            prefer_remote=True,
+        )
+
+    assert items[0].checksum == f"sha256:{remote_sha}"
+    assert items[0].url == "https://example.com/amazon-aws-10.3.0.tar.gz"
+    assert "does not match remote" in caplog.text
+
+
+def test_prefer_remote_requires_usable_servers(tmp_path: Path):
+    repo = tmp_path
+    _make_collection_tarball(
+        repo / "collections" / "amazon-aws-10.3.0.tar.gz",
+        version="10.3.0",
+    )
+    req = repo / "requirements.yml"
+    req.write_text(
+        yaml.safe_dump(
+            {"collections": [{"name": "collections/amazon-aws-10.3.0.tar.gz"}]}
+        ),
+        encoding="utf-8",
+    )
+    requirements = load_requirements_file(req, project_dir=repo)
+    with pytest.raises(GalaxyError, match="No usable galaxy servers"):
+        resolve_collections(requirements, servers=[], prefer_remote=True)
+
+
+@responses.activate
+def test_prefer_remote_missing_version_fails(tmp_path: Path):
+    from ansible_lockfile.galaxy import GalaxyServer
+
+    repo = tmp_path
+    _make_collection_tarball(
+        repo / "collections" / "amazon-aws-10.3.0.tar.gz",
+        version="10.3.0",
+    )
+    req = repo / "requirements.yml"
+    req.write_text(
+        yaml.safe_dump(
+            {"collections": [{"name": "collections/amazon-aws-10.3.0.tar.gz"}]}
+        ),
+        encoding="utf-8",
+    )
+    requirements = load_requirements_file(req, project_dir=repo)
+
+    base = "https://galaxy.ansible.com"
+    responses.add(
+        responses.GET,
+        f"{base}/api/v3/plugin/ansible/content/published/collections/"
+        "index/amazon/aws/versions/10.3.0/",
+        status=404,
+        json={"errors": [{"detail": "Not found"}]},
+    )
+
+    with pytest.raises(GalaxyError, match="Could not resolve amazon.aws"):
+        resolve_collections(
+            requirements,
+            servers=[GalaxyServer(url=base)],
+            prefer_remote=True,
+        )

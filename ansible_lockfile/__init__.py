@@ -203,6 +203,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--prefer-remote",
+        action="store_true",
+        help=(
+            "For path-style local .tar.gz requirements, read FQCN/version from the "
+            "tarball MANIFEST.json, then resolve download URL/checksum/size from "
+            "galaxy server_list (warn if local and remote checksums differ)"
+        ),
+    )
+    parser.add_argument(
         "--print-schema",
         action="store_true",
         help="Print JSON schema for optional ansible.in.yaml and exit",
@@ -249,7 +258,9 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         collections, servers_used = galaxy.resolve_collections(
-            requirements, servers=servers
+            requirements,
+            servers=servers,
+            prefer_remote=args.prefer_remote,
         )
     except ValidationError as exc:
         logger.error("Input validation failed: %s", exc.message)

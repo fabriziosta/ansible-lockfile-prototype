@@ -46,7 +46,7 @@ usage: ansible-lockfile-prototype [-h] [--project-dir PROJECT_DIR]
                                   [--ansible-cfg PATH] [--requirements PATH]
                                   [--outfile OUTFILE]
                                   [--export-generic PATH] [--token-env NAME]
-                                  [--print-schema] [--debug]
+                                  [--prefer-remote] [--print-schema] [--debug]
                                   [input_file]
 ```
 
@@ -111,6 +111,13 @@ Identity and version come from the archive’s `MANIFEST.json`
 and the tarball’s sha256/size. Transitive dependencies listed in the manifest
 are resolved next (locally if also vendored, otherwise via `server_list`).
 
+With **`--prefer-remote`**, the tarball is still required (FQCN/version from
+`MANIFEST.json`), but download URL, checksum, size, and server name come from
+`server_list`. If the local tarball sha256 differs from the remote artifact, a
+warning is logged and the remote values are kept. Missing servers or a missing
+remote version fail hard (no `file://` fallback). In this mode
+`--export-generic` includes those collections.
+
 `--export-generic` **skips** local (`file://`) collections—they are already in
 the source tree.
 
@@ -130,6 +137,16 @@ ansible-lockfile-prototype \
   --project-dir /path/to/aap-konflux-vendor-collections \
   --requirements ee-supported/requirements-2.7.yml \
   --outfile=ansible.lock.yaml
+```
+
+```bash
+# same vendor tree, but lock remote Galaxy/AH URLs for Hermeto prefetch
+ansible-lockfile-prototype \
+  --project-dir /path/to/aap-konflux-vendor-collections \
+  --requirements ee-supported/requirements-2.7.yml \
+  --prefer-remote \
+  --outfile=ansible.lock.yaml \
+  --export-generic=artifacts.lock.yaml
 ```
 
 ## ansible.cfg and server priority
