@@ -9,6 +9,8 @@ pinned artifacts offline.
 See Hermeto issue
 [#1071](https://github.com/hermetoproject/hermeto/issues/1071).
 
+Coding agents: follow [AGENTS.md](AGENTS.md) (keep this README updated when user-facing behavior changes).
+
 **There are no stability guarantees.**
 
 [Hermeto]: https://hermetoproject.github.io/hermeto/
@@ -202,7 +204,10 @@ the refresh token itself while generating the lockfile.
 
 ## Non-goals (this cut)
 
-- Username/password private automation hub auth
-- Roles / `type: git|dir|url` sources (path-style local `.tar.gz` names are supported)
-- Rewriting `requirements.yml` to local paths (Hermeto inject-files territory)
+- Username/password authentication for private automation hubs
+- Roles
+- Explicit `type: git`, `type: dir`, or `type: url` requirement sources
+- Rewriting `requirements.yml` to local paths after prefetch (Hermeto inject-files territory)
 - A Hermeto Ansible package-manager backend
+
+Local path-style `.tar.gz` collection archives (inferred from `name:` without `type:`) **are** supported; see [Local collection tarballs](#local-collection-tarballs).
