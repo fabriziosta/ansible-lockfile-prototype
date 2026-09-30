@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.lock.yaml
+!tests/**/expected.lock.yaml
+artifacts.lock.yaml

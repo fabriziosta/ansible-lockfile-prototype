@@ -1,0 +1,10 @@
+---
+lockfileVersion: 1
+lockfileVendor: ansible
+collections:
+- name: community.general
+  version: 13.3.0
+  url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-13.3.0.tar.gz
+  checksum: sha256:46506254911a675da601abe0adce1bc5d00886ec9c6edb71e930244db7ed9f4d
+  size: 2825915
+  server: galaxy

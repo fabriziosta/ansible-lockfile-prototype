@@ -1,0 +1,34 @@
+[project]
+name = "ansible-lockfile-prototype"
+version = "0.1.0"
+description = "Proof-of-concept lockfile generator for Ansible Galaxy collections (Hermeto-facing)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "jsonschema",
+    "packaging",
+    "pyyaml",
+    "requests",
+]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "responses",
+]
+
+[project.scripts]
+ansible-lockfile-prototype = "ansible_lockfile:main"
+
+[tool.setuptools]
+packages = ["ansible_lockfile"]
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

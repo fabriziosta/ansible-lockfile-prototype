@@ -1,0 +1,7 @@
+---
+contentOrigin:
+  galaxy:
+    - url: https://galaxy.ansible.com
+collections:
+  - name: community.general
+    version: "13.3.0"
