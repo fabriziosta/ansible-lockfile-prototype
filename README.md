@@ -40,6 +40,10 @@ galaxy servers from `ansible.cfg` (same model as
 ansible-lockfile-prototype --outfile=ansible.lock.yaml
 ```
 
+Log lines use a colored level name on a TTY (`INFO` green, `WARNING` yellow,
+`ERROR` red). Set `NO_COLOR=1` to disable, or `FORCE_COLOR=1` to force ANSI
+codes when stdout/stderr is not a terminal.
+
 ```console
 $ ansible-lockfile-prototype --help
 usage: ansible-lockfile-prototype [-h] [--project-dir PROJECT_DIR]
@@ -77,7 +81,8 @@ ansible-lockfile-prototype --requirements collections/ee-supported-requirements.
 Requirements files list collection names/versions **or** local tarball paths.
 They do **not** need a `type: file` marker for vendored archives.
 
-**Servers** come from `ansible.cfg`:
+**Servers** come from `ansible.cfg`. At startup the tool logs which config it
+picked (or that none was found):
 
 1. `$ANSIBLE_CONFIG` if set
 2. `./ansible.cfg` (and parent directories)
@@ -132,7 +137,27 @@ git lfs install
 git lfs pull
 ```
 
+Place an `ansible.cfg` in the project root (Automation Hub first, public Galaxy
+failover). Example matching the vendor-collections layout:
+
+```ini
+[galaxy]
+server_list = automation_hub, galaxy
+
+[galaxy_server.automation_hub]
+url = https://console.redhat.com/api/automation-hub/content/published/
+auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+token_env = AUTOMATION_HUB_TOKEN
+
+[galaxy_server.galaxy]
+url = https://galaxy.ansible.com
+```
+
+Export a refresh token, then run from that tree:
+
 ```bash
+export AUTOMATION_HUB_TOKEN=...   # offline/refresh token from console.redhat.com
+
 ansible-lockfile-prototype \
   --project-dir /path/to/aap-konflux-vendor-collections \
   --requirements ee-supported/requirements-2.7.yml \
@@ -151,17 +176,21 @@ ansible-lockfile-prototype \
 
 ## ansible.cfg and server priority
 
+The tool discovers `ansible.cfg` the same way ansible-galaxy does (see
+[Discovery](#discovery)). Use the vendor-collections example above, or the same
+shape in any project:
+
 ```ini
 [galaxy]
 server_list = automation_hub, galaxy
 
 [galaxy_server.automation_hub]
-url=https://console.redhat.com/api/automation-hub/content/published/
-auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
-token=my_ah_token
+url = https://console.redhat.com/api/automation-hub/content/published/
+auth_url = https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+token_env = AUTOMATION_HUB_TOKEN
 
 [galaxy_server.galaxy]
-url=https://galaxy.ansible.com
+url = https://galaxy.ansible.com
 ```
 
 `server_list` is a priority list (ansible-galaxy behavior):
@@ -173,8 +202,10 @@ url=https://galaxy.ansible.com
 Username/password-only servers (private hubs) are skipped with a warning in this
 prototype.
 
-Prefer not committing tokens: use `--token-env AUTOMATION_HUB_TOKEN` so the
-secret is read from the environment instead of `token=` in the file.
+Prefer not committing tokens: set `token_env=AUTOMATION_HUB_TOKEN` in
+`ansible.cfg` (or pass `--token-env AUTOMATION_HUB_TOKEN`) so the refresh token
+is read from the environment. `--token-env` overrides a cfg `token_env=` /
+`token=`.
 
 SSO (`auth_url`) uses the refresh-token grant (`client_id` defaults to
 `cloud-services`) and calls Hub APIs with `Authorization: Bearer <access_token>`.

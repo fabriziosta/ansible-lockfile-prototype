@@ -32,6 +32,7 @@ If a commit only refactors internals with no user-visible change, a README edit 
 
 - Hermeto-facing PoC: fully resolved lockfile (URL + checksum + size); no `ansible-galaxy` subprocess for resolution.
 - Secrets: never commit tokens; use `token=` in ansible.cfg only as a local convenience, prefer `--token-env`.
+- CLI logging: colored level names on a TTY via `logging_config.py`; honor `NO_COLOR` / `FORCE_COLOR`.
 - Local vendored collections: infer from path-like `name:` ending in `.tar.gz` (no `type: file` required); read version from `MANIFEST.json`; detect Git LFS pointers and error with pull instructions.
 - `--prefer-remote`: still read FQCN/version from the local tarball, but lock remote URL/checksum from `server_list`; warn on checksum mismatch; fail if remote missing.
 - After substantive code changes, run: `python -m pytest` (from a venv with `pip install -e '.[test]'`).

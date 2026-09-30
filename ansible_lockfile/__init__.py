@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import yaml
 
 from . import ansible_cfg, discover, export_generic, galaxy, schema
 from .galaxy import GalaxyServer
+from .logging_config import configure_logging
 from .models import CollectionItem
 
 logger = logging.getLogger(__name__)
@@ -105,18 +107,18 @@ def resolve_from_project(
     token_env_override: str | None = None,
 ) -> tuple[list[dict], list[GalaxyServer]]:
     """Discover requirements + ansible.cfg and return requirements and servers."""
+    explicit_cfg = ansible_cfg_path is not None
     cfg_path = ansible_cfg_path or ansible_cfg.find_ansible_cfg(project_dir)
     root = discover.project_dir_for(cfg_path, cwd=project_dir)
 
-    if requirements_path is None:
-        requirements_path = discover.find_requirements_file(root)
-    requirements = galaxy.load_requirements_file(
-        requirements_path, project_dir=root
-    )
-
     if cfg_path is None:
+        logger.info(
+            "No ansible.cfg found (searched $ANSIBLE_CONFIG, %s and parents, "
+            "~/.ansible.cfg, /etc/ansible/ansible.cfg)",
+            project_dir.resolve(),
+        )
         logger.warning(
-            "No ansible.cfg found; defaulting to public Galaxy (%s)",
+            "Defaulting to public Galaxy (%s)",
             galaxy.DEFAULT_GALAXY_URL,
         )
         servers = [
@@ -127,10 +129,22 @@ def resolve_from_project(
             )
         ]
     else:
-        logger.info("Using ansible.cfg %s", cfg_path)
+        if explicit_cfg:
+            how = "via --ansible-cfg"
+        elif os.environ.get("ANSIBLE_CONFIG"):
+            how = "via $ANSIBLE_CONFIG"
+        else:
+            how = "via discovery"
+        logger.info("Using ansible.cfg %s (%s)", cfg_path.resolve(), how)
         servers = ansible_cfg.parse_ansible_cfg(
             cfg_path, token_env_override=token_env_override
         )
+
+    if requirements_path is None:
+        requirements_path = discover.find_requirements_file(root)
+    requirements = galaxy.load_requirements_file(
+        requirements_path, project_dir=root
+    )
 
     return requirements, servers
 
@@ -219,10 +233,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
-        format="%(levelname)s: %(message)s",
-    )
+    configure_logging(debug=args.debug)
 
     if args.print_schema:
         schema.print_schema()
@@ -239,6 +250,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         if input_path is not None and _is_ansible_in_file(input_path):
+            logger.info(
+                "Using ansible.in override %s "
+                "(galaxy servers from contentOrigin; ansible.cfg not used)",
+                input_path.resolve(),
+            )
             requirements, servers = load_ansible_in(
                 input_path, token_env_override=args.token_env
             )

@@ -102,6 +102,43 @@ token=from_cfg
     assert servers[0].token_env == "AUTOMATION_HUB_TOKEN"
 
 
+def test_parse_token_env_from_ansible_cfg(tmp_path: Path):
+    cfg = tmp_path / "ansible.cfg"
+    cfg.write_text(
+        """
+[galaxy]
+server_list = automation_hub
+
+[galaxy_server.automation_hub]
+url=https://console.redhat.com/api/automation-hub/content/published/
+auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+token_env = AUTOMATION_HUB_TOKEN
+""",
+        encoding="utf-8",
+    )
+    servers = parse_ansible_cfg(cfg)
+    assert servers[0].token is None
+    assert servers[0].token_env == "AUTOMATION_HUB_TOKEN"
+
+
+def test_cli_token_env_overrides_cfg_token_env(tmp_path: Path):
+    cfg = tmp_path / "ansible.cfg"
+    cfg.write_text(
+        """
+[galaxy]
+server_list = automation_hub
+
+[galaxy_server.automation_hub]
+url=https://console.redhat.com/api/automation-hub/content/published/
+auth_url=https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token
+token_env = OLD_TOKEN
+""",
+        encoding="utf-8",
+    )
+    servers = parse_ansible_cfg(cfg, token_env_override="NEW_TOKEN")
+    assert servers[0].token_env == "NEW_TOKEN"
+
+
 def test_find_ansible_cfg_and_requirements(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("ANSIBLE_CONFIG", raising=False)
     (tmp_path / "ansible.cfg").write_text("[galaxy]\n", encoding="utf-8")
@@ -111,6 +148,48 @@ def test_find_ansible_cfg_and_requirements(tmp_path: Path, monkeypatch):
     )
     assert find_ansible_cfg(tmp_path) == (tmp_path / "ansible.cfg").resolve()
     assert find_requirements_file(tmp_path) == tmp_path / "requirements.yml"
+
+
+def test_resolve_from_project_logs_ansible_cfg(tmp_path: Path, monkeypatch, caplog):
+    import logging
+
+    from ansible_lockfile import resolve_from_project
+
+    monkeypatch.delenv("ANSIBLE_CONFIG", raising=False)
+    cfg = tmp_path / "ansible.cfg"
+    cfg.write_text(
+        "[galaxy]\nserver_list = galaxy\n\n[galaxy_server.galaxy]\n"
+        "url=https://galaxy.ansible.com\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.yml").write_text(
+        "collections:\n  - name: community.general\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.INFO):
+        resolve_from_project(project_dir=tmp_path)
+    assert f"Using ansible.cfg {cfg.resolve()} (via discovery)" in caplog.text
+
+
+def test_resolve_from_project_logs_when_no_cfg(tmp_path: Path, monkeypatch, caplog):
+    import logging
+
+    from ansible_lockfile import resolve_from_project
+
+    monkeypatch.delenv("ANSIBLE_CONFIG", raising=False)
+    # Avoid picking up a real system ansible.cfg during the test.
+    monkeypatch.setattr(
+        "ansible_lockfile.ansible_cfg.find_ansible_cfg",
+        lambda start=None: None,
+    )
+    (tmp_path / "requirements.yml").write_text(
+        "collections:\n  - name: community.general\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.INFO):
+        resolve_from_project(project_dir=tmp_path)
+    assert "No ansible.cfg found" in caplog.text
+    assert "Defaulting to public Galaxy" in caplog.text
 
 
 AH_BASE = "https://console.redhat.com/api/automation-hub/content/published/"

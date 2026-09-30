@@ -84,13 +84,14 @@ def parse_ansible_cfg(
             raise GalaxyError(f"{path}: [{section}] missing required url")
         auth_url = parser.get(section, "auth_url", fallback="").strip() or None
         token = parser.get(section, "token", fallback="").strip() or None
+        cfg_token_env = parser.get(section, "token_env", fallback="").strip() or None
         client_id = (
             parser.get(section, "client_id", fallback="").strip() or DEFAULT_CLIENT_ID
         )
         username = parser.get(section, "username", fallback="").strip() or None
         password = parser.get(section, "password", fallback="").strip() or None
-        token_env = token_env_override
-        # Prefer env override for the secret; keep cfg token as fallback.
+        # CLI --token-env wins over ansible.cfg token_env= / token=.
+        token_env = token_env_override or cfg_token_env
         servers.append(
             GalaxyServer(
                 name=name,
@@ -123,7 +124,7 @@ def parse_ansible_cfg(
         if server.auth_url and not (server.token or server.token_env):
             raise GalaxyError(
                 f"{path}: galaxy_server.{server.name} has auth_url but no token "
-                "(set token= in ansible.cfg or pass --token-env)"
+                "(set token= or token_env= in ansible.cfg, or pass --token-env)"
             )
 
     return servers
